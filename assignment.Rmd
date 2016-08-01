@@ -1,0 +1,100 @@
+---
+title: "Prediction Assignment"
+output: html_document
+---
+
+## Background
+
+#### Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. This project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to build models that can predict how well they do exercises.
+
+## Data Processing
+
+#### Download and Read the Data Set
+
+``` {r download, eval=FALSE}
+## download files
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv")
+```
+
+``` {r readcsv}
+pml.training <- read.csv("pml-training.csv")
+pml.testing <- read.csv("pml-testing.csv")
+```
+
+#### First, some preliminary analysis was conducted, which showed that some columns were mostly NA (19216 out of 19622), therefore, these columns are not very useful and should be excluded in further analysis. Excluding these columns resulted in a tidy data set with no missing values. 
+
+#### The first 7 columns contain information such as id, user, and timestamp, and these information should not play a role in modeling; therefore, these columns are excluded as well. 
+
+``` {r clean}
+## check for missing value
+numberNA <- apply(pml.training, 2, function(x) {sum(is.na(x))})
+
+plot(numberNA)
+
+## tidy the data set by selecting columns without missing value 
+goodColumns <- names(numberNA[numberNA == 0])
+
+## remove user information and exercise time
+keepColumns <- goodColumns[8: length(goodColumns)]
+
+pml.keep <- pml.training[, keepColumns]
+
+## str(pml.keep) 
+```
+
+#### Third, at this stage, a closer look at the data set pml.keep will show that some columns are factors that have empty values. This problem will be taken care of as below:
+
+``` {r cleanMore, warning=FALSE}
+indx <- sapply(pml.keep, is.factor)
+## "classe" should stay as Factor
+indx[length(indx)] <- FALSE
+
+pml.keep[indx] <- lapply(pml.keep[indx], function(x) as.numeric(as.character(x)))
+
+keepNA <- apply(pml.keep, 2, function(x) {sum(is.na(x))})
+finalColumns <- names(keepNA[keepNA == 0])
+
+## This is the tidy data set to be used for modeling
+pml.tidy <- pml.keep[, finalColumns]
+dim(pml.tidy)
+```
+
+#### The tidy data was split into training and validation sets
+
+``` {r partition}
+library(caret)
+set.seed(100)
+inTrain <- createDataPartition(pml.tidy$classe, p = 3/4)[[1]]
+training <- pml.tidy[ inTrain,]
+testing <- pml.tidy[-inTrain,]
+```
+
+## Modeling
+
+#### With the tidy data set, I used two different methods for building models, random forests and decision trees.  
+
+``` {r modeling}
+library(randomForest)
+fitRf <- randomForest(classe ~ ., data=training, method='class')
+library(rpart)
+fitRpart <- rpart(classe ~ ., method="class", data=training)
+```
+
+## Evaluation of the models
+
+#### Both models were evaluated using the testing subset.
+
+``` {r check}
+confusionMatrix(testing$classe, predict(fitRf, testing))
+confusionMatrix(testing$classe, predict(fitRpart, testing, type="class"))
+```
+
+#### It's clear that random forests is a better model than decision trees.
+
+## Prediction on the unknown sample
+
+``` {r predict}
+## predict using both models
+predict(fitRf, pml.testing)
+```
